@@ -1,0 +1,112 @@
+---
+title: "Change Analysis of Categorical Cardiovascular Variables Across Visits"
+author: "Qikai Jiang"
+date: "2023-11-16"
+output: html_document
+---
+
+```{r}
+# Load the longitudinal dataset from a CSV file
+# The dataset contains repeated measures (visits) per subject
+data_long <- read.csv("C:/Users/12073/OneDrive/Desktop/data_cvd.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+# Load necessary tidyverse libraries for data manipulation and reshaping
+library(tidyr)
+library(dplyr)
+```
+
+```{r}
+# Create a new variable 'outcome' as the sum of three binary risk factors:
+# highchol (high cholesterol), highbp (high blood pressure), and diabetes
+# This represents the total count of these cardiovascular risk conditions per observation
+data_long <- data_long %>%
+  mutate(outcome = highchol + highbp + diabetes)
+```
+
+```{r}
+# Define the variables of interest (categorical risk factors and the composite outcome)
+vars <- c("alcuse", "obese", "highchol", "highbp", "smoker", "diabetes", "outcome")
+
+# Reshape the data from long to wide format to have separate columns per visit for each variable
+# 'id' identifies the subject, 'visit' specifies the time point
+# After reshaping, variables will have suffixes _v1, _v2, _v3 corresponding to visits 1, 2, and 3
+data_wide <- data_long %>%
+  select(id, visit, all_of(vars)) %>%
+  pivot_wider(
+    id_cols = id,
+    names_from = visit,
+    values_from = all_of(vars),
+    names_sep = "_v"
+  )
+```
+
+```{r}
+# Define a function to track categorical variable changes between visits for a given variable
+track_cat_changes_visits <- function(data, var) {
+  # Construct variable names for visits 1, 2, and 3
+  v1 <- paste0(var, "_v1")
+  v2 <- paste0(var, "_v2")
+  v3 <- paste0(var, "_v3")
+  
+  # Check if the variables for all three visits exist in the dataset
+  # If any are missing, print a message and skip this variable
+  if(!all(c(v1, v2, v3) %in% names(data))) {
+    message("Missing variables for ", var, ", skipping.")
+    return(NULL)
+  }
+  
+  # Calculate the direction of change between visits 1 and 2, and visits 2 and 3
+  # Possible statuses: "increase", "decrease", or "stable"
+  df <- data %>%
+    mutate(
+      change_1_2 = case_when(
+        !!sym(v2) > !!sym(v1) ~ "increase",
+        !!sym(v2) < !!sym(v1) ~ "decrease",
+        TRUE ~ "stable"
+      ),
+      change_2_3 = case_when(
+        !!sym(v3) > !!sym(v2) ~ "increase",
+        !!sym(v3) < !!sym(v2) ~ "decrease",
+        TRUE ~ "stable"
+      )
+    )
+  
+  # Summarize counts and proportions of each status between visits 1 and 2
+  summary_1_2 <- df %>%
+    count(change_1_2) %>%
+    mutate(
+      proportion = n / sum(n),  # proportion of each status
+      variable = var,           # variable name for reference
+      interval = "visit1_to_visit2"
+    ) %>%
+    rename(status = change_1_2, count = n)
+  
+  # Summarize counts and proportions of each status between visits 2 and 3
+  summary_2_3 <- df %>%
+    count(change_2_3) %>%
+    mutate(
+      proportion = n / sum(n),
+      variable = var,
+      interval = "visit2_to_visit3"
+    ) %>%
+    rename(status = change_2_3, count = n)
+  
+  # Combine the two summaries into one dataframe for easy comparison
+  bind_rows(summary_1_2, summary_2_3)
+}
+```
+```{r}
+# Apply the tracking function to each variable in the list
+# Combine all the results into one summary table
+change_summary <- bind_rows(lapply(vars, function(v) {
+  track_cat_changes_visits(data_wide, v)
+}))
+
+# Print the final summary table showing counts and proportions of increases,
+# decreases, and stable statuses between visits for all variables
+print(change_summary)
+```
+
+

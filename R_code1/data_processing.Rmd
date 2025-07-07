@@ -1,0 +1,43 @@
+---
+title: "Process the Data before Proper Analysis"
+author: "Qikai Jiang"
+date: "2023-11-16"
+output: html_document
+---
+
+```{r}
+# Load the longitudinal cardiovascular dataset
+# Each subject may have multiple visits (repeated measures)
+data_long <- read.csv("C:/Users/12073/OneDrive/Desktop/data_cvd.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+# Create a composite comorbidity outcome by summing indicators for
+# diabetes, high blood pressure, and high cholesterol
+data_long$outcome <- with(data_long, diabetes + highbp + highchol)
+```
+
+```{r}
+# Exclude subject with ID 1695 due to data quality or outlier concerns
+data_long <- subset(data_long, id != 1695)
+```
+
+```{r}
+# Split the dataset by visit time to allow visit-specific analysis
+data_long_v1 <- subset(data_long, visit == 1)
+data_long_v2 <- subset(data_long, visit == 2)
+data_long_v3 <- subset(data_long, visit == 3)
+```
+
+```{r}
+# Save the cleaned full dataset to disk
+write.csv(data_long, "C:/Users/12073/OneDrive/Desktop/cvd.csv", row.names = FALSE)
+```
+
+```{r}
+# Save visit-specific datasets for stratified modeling or diagnostics
+write.csv(data_long_v1, "C:/Users/12073/OneDrive/Desktop/cvd_v1.csv", row.names = FALSE)
+write.csv(data_long_v2, "C:/Users/12073/OneDrive/Desktop/cvd_v2.csv", row.names = FALSE)
+write.csv(data_long_v3, "C:/Users/12073/OneDrive/Desktop/cvd_v3.csv", row.names = FALSE)
+```
+

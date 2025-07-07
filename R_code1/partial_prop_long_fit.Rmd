@@ -1,0 +1,91 @@
+---
+title: "Bayesian Cumulative Logit Mixed Model with Partial Proportional Odds Structure and Model Diagnostics"
+author: "Qikai Jiang"
+date: "2023-11-19"
+output: html_document
+---
+
+```{r}
+# Load required libraries
+library(brms)     # for Bayesian ordinal regression
+library(tidyverse) # optional, for data inspection
+```
+
+```{r}
+# Read dataset
+data_cvd <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd.csv", stringsAsFactors = TRUE)
+
+# Convert variables to appropriate factor types
+factor_vars <- c("outcome", "visit", "female", "educ", "pag2008", 
+                 "depr1", "alcuse", "smoker")
+data_cvd[factor_vars] <- lapply(data_cvd[factor_vars], factor)
+
+# Ensure ordinal ordering for outcome variable
+data_cvd$outcome <- factor(data_cvd$outcome, ordered = TRUE)
+```
+
+```{r}
+# Flexible function to fit a partial proportional odds model using brms
+fit_partial_pom <- function(data, outcome_var, subject_id,
+                            prop_vars, nonprop_vars,
+                            chains = 2, iter = 2000, warmup = 1000, cores = 4) {
+  
+  # Combine proportional and non-proportional variables
+  all_vars <- c(prop_vars, nonprop_vars)
+  
+  # Build formula string
+  formula_terms <- c(
+    paste0("cs(", nonprop_vars, ")", collapse = " + "),
+    paste0(prop_vars, collapse = " + "),
+    paste0("(1 | ", subject_id, ")")
+  )
+  
+  # Construct full brms formula
+  brm_formula <- bf(as.formula(
+    paste0(outcome_var, " ~ ", paste(formula_terms, collapse = " + "))
+  ))
+  
+  # Fit model
+  fit <- brm(
+    formula = brm_formula,
+    data = data,
+    family = cumulative(link = "logit"),
+    chains = chains,
+    iter = iter,
+    warmup = warmup,
+    cores = cores,
+    control = list(adapt_delta = 0.95)
+  )
+  
+  return(fit)
+}
+```
+
+```{r}
+# Define proportional and non-proportional terms
+nonproportional_vars <- c("visit", "female", "alcuse", "bmi")
+proportional_vars    <- c("educ", "pag2008", "depr1", "age", "smoker", "hei2010")
+
+# Fit the model
+fit_partial_full <- fit_partial_pom(
+  data         = data_cvd,
+  outcome_var  = "outcome",
+  subject_id   = "id",
+  prop_vars    = proportional_vars,
+  nonprop_vars = nonproportional_vars
+)
+```
+
+```{r}
+# Posterior predictive density overlay plot comparing observed and simulated outcome distributions.
+# This diagnostic assesses the model's fit by overlaying kernel density estimates of observed outcomes
+# and posterior predictive replicates. Ideally, close alignment between curves suggests adequate fit.
+pp_check(fit_partial_full, type = "dens_overlay")
+```
+```{r}
+# Trace and density plots for posterior samples of all model parameters.
+# These diagnostics facilitate convergence assessment and inspection of posterior distribution shapes.
+# Well-mixed chains and unimodal densities are indicative of good MCMC performance.
+plot(fit_partial_full)
+```
+

@@ -1,0 +1,135 @@
+---
+title: 'Visualize Threshold-Specific Logistic Coefficients for Ordinal Outcomes'
+author: "Qikai Jiang"
+date: "2023-11-16"
+output: html_document
+---
+```{r}
+library(broom)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+```
+
+```{r}
+data_long_v1 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v1.csv", stringsAsFactors = FALSE)
+data_long_v2 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v2.csv", stringsAsFactors = FALSE)
+data_long_v3 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v3.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+#' Visualize Threshold-Specific Logistic Coefficients for Ordinal Outcomes
+#'
+#' This function provides diagnostic visualization for the proportional odds 
+#' assumption in ordinal logistic regression by fitting a series of binary 
+#' logistic regressions for cumulative thresholds of the ordinal outcome.
+#' It plots the estimated log-odds coefficients and 95% confidence intervals 
+#' for each threshold, enabling identification of variables that may violate 
+#' the proportional odds assumption.
+#'
+#' @param data A data frame containing the ordinal outcome and predictor variables.
+#' @param outcome A string indicating the name of the ordinal outcome variable (must be coded as 0, 1, 2, ...).
+#' @param predictors A character vector of predictor names or a formula RHS string (e.g., "x1 + x2 + x3").
+#'
+#' @return A ggplot2 object visualizing slope estimates across thresholds.
+#'
+#' @details 
+#' The function discretizes the ordinal outcome into binary indicators for each 
+#' cumulative threshold, i.e., \( P(Y \geq k) \), and fits separate logistic 
+#' models. This is equivalent to visualizing separate logits to assess 
+#' parallelism of slopes, a key component of the proportional odds assumption.
+#' 
+#' @import ggplot2
+#' @importFrom dplyr bind_rows filter
+#' @importFrom broom tidy
+#' @importFrom ggthemes scale_color_colorblind
+#'
+#' @examples
+#' plot_partial_logistic_slopes(data = df, outcome = "severity",
+#'                              predictors = c("age", "sex", "bmi", "smoking"))
+plot_partial_logistic_slopes <- function(data, outcome, predictors) {
+  
+  # If predictors is a character vector, collapse to formula string
+  if (is.character(predictors)) {
+    predictors <- paste(predictors, collapse = " + ")
+  }
+  
+  # Validate that outcome has consecutive integer levels starting from 0
+  outcome_vals <- sort(unique(data[[outcome]]))
+  if (!all(outcome_vals == 0:(length(outcome_vals)-1))) {
+    stop("Outcome values must be consecutive integers starting from 0.")
+  }
+  n_levels <- length(outcome_vals)
+  
+  # Create binary indicators y1, y2, ..., yK−1 for P(Y ≥ k) at each threshold
+  for (k in 1:(n_levels - 1)) {
+    bin_name <- paste0("y", k)
+    data[[bin_name]] <- as.numeric(data[[outcome]] >= outcome_vals[k + 1])
+  }
+  
+  # Fit separate binary logistic regressions for each threshold
+  fits <- list()
+  for (k in 1:(n_levels - 1)) {
+    bin_name <- paste0("y", k)
+    form <- as.formula(paste(bin_name, "~", predictors))
+    fits[[k]] <- glm(form, data = data, family = binomial())
+  }
+  
+  # Extract and tidy coefficient estimates from each model
+  coef_df <- bind_rows(
+    lapply(1:length(fits), function(i) {
+      tidy(fits[[i]]) %>%
+        mutate(threshold = paste0("≥", outcome_vals[i + 1]))
+    })
+  )
+  
+  # Exclude intercepts from visualization
+  coef_df_plot <- coef_df %>% filter(term != "(Intercept)")
+  
+  # Plot slope coefficients with 95% confidence intervals
+  ggplot(coef_df_plot, aes(x = term, y = estimate, color = threshold, group = threshold)) +
+    geom_hline(yintercept = 0, color = "gray60", linetype = "dashed", size = 0.5) +
+    geom_point(position = position_dodge(width = 0.6), size = 2, shape = 16) +
+    geom_errorbar(aes(ymin = estimate - 1.96 * std.error,
+                      ymax = estimate + 1.96 * std.error),
+                  width = 0.15, position = position_dodge(width = 0.6), size = 0.7) +
+    scale_color_colorblind() +  # Use colorblind-safe palette
+    labs(
+      title = NULL,
+      y = "Log-Odds Coefficient",
+      x = NULL,
+      color = "Threshold"
+    ) +
+    theme_classic(base_size = 14, base_family = "serif") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      legend.position = "top",
+      legend.title = element_text(face = "bold"),
+      legend.background = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, size = 0.7)
+    )
+}
+
+```
+
+```{r}
+plot_partial_logistic_slopes(data_long_v1, "outcome",
+                              c("factor(female)", "factor(educ)", "hei2010",
+                                "factor(pag2008)", "factor(depr1)", "age",
+                                "factor(alcuse)", "bmi", "factor(smoker)"))
+```
+
+```{r}
+plot_partial_logistic_slopes(data_long_v2, "outcome",
+                              c("factor(female)", "factor(educ)", "hei2010",
+                                "factor(pag2008)", "factor(depr1)", "age",
+                                "factor(alcuse)", "bmi", "factor(smoker)"))
+```
+
+```{r}
+plot_partial_logistic_slopes(data_long_v3, "outcome",
+                              c("factor(female)", "factor(educ)", "hei2010",
+                                "factor(pag2008)", "factor(depr1)", "age",
+                                "factor(alcuse)", "bmi", "factor(smoker)"))
+```

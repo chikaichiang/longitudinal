@@ -1,0 +1,115 @@
+---
+title: "Brant Test for Proportional Odds Assumption Across Visits"
+author: "Qikai Jiang"
+date: "2023-11-16"
+output: html_document
+---
+
+
+```{r}
+data_long_v1 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v1.csv", stringsAsFactors = FALSE)
+data_long_v2 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v2.csv", stringsAsFactors = FALSE)
+data_long_v3 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v3.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+#' Fit a Proportional Odds Logistic Regression and Conduct Brant Test
+#'
+#' This function fits a proportional odds logistic regression model using the
+#' `polr()` function from the MASS package and evaluates the proportional odds 
+#' assumption using the Brant test. It automatically handles categorical variable 
+#' conversion and ensures the outcome is properly ordered. Suitable for use in 
+#' ordinal regression diagnostics, especially in studies reporting threshold-specific 
+#' log-odds under the PO assumption.
+#'
+#' @param data A data frame containing the outcome and predictor variables.
+#' @param outcome_var A character string specifying the name of the ordinal outcome variable.
+#' @param predictors A character vector of predictor variable names to include in the model.
+#'
+#' @return Invisibly returns a list with the fitted model object and Brant test results.
+#'         Prints the model summary and Brant diagnostics to the console.
+#'
+#' @details
+#' Categorical variables commonly used in health and social sciences research 
+#' (e.g., sex, education level, smoking status) are coerced to factor type if present.
+#' The function assumes the outcome variable uses increasing integers to reflect 
+#' ordered categories and converts it to an ordered factor.
+#'
+#' @examples
+#' fit_polr_brant(data = data_long_v1,
+#'                outcome_var = "outcome",
+#'                predictors = c("female", "educ", "hei2010",
+#'                               "pag2008", "depr1", "age",
+#'                               "alcuse", "bmi", "smoker"))
+fit_polr_brant <- function(data, outcome_var, predictors) {
+  
+  # Check that required packages are installed
+  if (!requireNamespace("MASS", quietly = TRUE)) 
+    stop("Package 'MASS' is required but not installed.")
+  
+  if (!requireNamespace("brant", quietly = TRUE)) 
+    stop("Package 'brant' is required but not installed.")
+
+  # Step 1: Convert commonly categorical predictors to factor, if present
+  # This step avoids needing factor() calls inside the formula
+  categorical_vars <- c("female", "educ", "pag2008", "depr1", "alcuse", "smoker")
+  for (var in categorical_vars) {
+    if (var %in% names(data)) {
+      data[[var]] <- factor(data[[var]])
+    }
+  }
+
+  # Step 2: Ensure the outcome variable is an ordered factor
+  # Required by the polr() function to model ordinal outcomes
+  if (!is.ordered(data[[outcome_var]])) {
+    data[[outcome_var]] <- ordered(data[[outcome_var]])
+  }
+
+  # Step 3: Construct the model formula programmatically
+  # Uses character-based input to dynamically build the model formula
+  formula_str <- paste(outcome_var, "~", paste(predictors, collapse = " + "))
+
+  # Fit the proportional odds logistic regression model
+  model <- MASS::polr(
+    formula = as.formula(formula_str),
+    data = data,
+    method = "logistic",
+    Hess = TRUE # Requests the Hessian matrix for standard errors
+  )
+
+  # Step 4: Print model summary including coefficients, standard errors, and t-values
+  print(summary(model))
+
+  # Step 5: Perform the Brant test for proportional odds assumption
+  # This evaluates whether the slope coefficients differ significantly across thresholds
+  brant_result <- brant::brant(model)
+  print(brant_result)
+
+  # Optionally return both model and test result invisibly for downstream use
+  invisible(list(model = model, brant = brant_result))
+}
+```
+
+```{r}
+fit_polr_brant(
+  data = data_long_v1,
+  outcome_var = "outcome",
+  predictors = c("female", "educ", "hei2010", "pag2008", "depr1", "age", "alcuse", "bmi", "smoker")
+)
+```
+
+```{r}
+fit_polr_brant(
+  data = data_long_v2,
+  outcome_var = "outcome",
+  predictors = c("female", "educ", "hei2010", "pag2008", "depr1", "age", "alcuse", "bmi", "smoker")
+)
+```
+
+```{r}
+fit_polr_brant(
+  data = data_long_v3,
+  outcome_var = "outcome",
+  predictors = c("female", "educ", "hei2010", "pag2008", "depr1", "age", "alcuse", "bmi", "smoker")
+)
+```

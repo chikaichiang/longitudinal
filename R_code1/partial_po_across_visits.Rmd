@@ -1,0 +1,431 @@
+---
+title: "Cross-sectional Partial Proportional Odds Model Fits across Three Visits and Assumption Check"
+author: "Qikai Jiang"
+date: "2023-11-17"
+output: html_document
+---
+
+```{r}
+library(VGAM)
+```
+
+```{r}
+# Load the visit-specific datasets containing repeated measures of ordinal outcomes
+data_long_v1 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v1.csv", stringsAsFactors = FALSE)
+data_long_v2 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v2.csv", stringsAsFactors = FALSE)
+data_long_v3 <- read.csv("C:/Users/12073/OneDrive/Desktop/cvd_v3.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+#' Fit a Partial Proportional Odds Model using the VGAM Package
+#'
+#' This function fits a partial proportional odds model for an ordinal outcome,
+#' using the cumulative logit link with covariate-specific proportionality constraints.
+#'
+#' @param data A data frame containing the variables of interest.
+#' @param outcome A string specifying the name of the ordinal outcome variable.
+#' @param predictors A character vector specifying covariates included in the linear predictor.
+#'                   These may include both categorical and continuous variables.
+#' @param parallel_vars A subset of the predictor variables that are assumed to satisfy
+#'                      the proportional odds assumption (i.e., parallel regression lines across thresholds).
+#'
+#' @return A fitted VGAM model object of class "vglm".
+#'
+fit_partial_po_model <- function(data, outcome, predictors, parallel_vars) {
+  # Convert the outcome variable to an ordered factor as required for ordinal regression
+  data[[outcome]] <- factor(data[[outcome]], ordered = TRUE)
+
+  # Construct the model formula for the linear predictor
+  formula_main <- as.formula(
+    paste(outcome, "~", paste(predictors, collapse = " + "))
+  )
+
+  # Specify the covariates constrained to follow the proportional odds assumption
+  formula_parallel <- as.formula(
+    paste("~", paste(parallel_vars, collapse = " + "))
+  )
+
+  # Fit the partial proportional odds model using the cumulative logit link
+  model <- VGAM::vglm(
+    formula_main,
+    family = VGAM::cumulative(link = logitlink, parallel = formula_parallel),
+    data = data
+  )
+
+  return(model)
+}
+```
+
+```{r}
+# Example: Estimate a partial proportional odds model for Visit 1
+# The model includes both time-invariant and time-varying covariates.
+# Proportionality is relaxed for age, female, education, alcohol use, and depression.
+
+model_partial_v1 <- fit_partial_po_model(
+  data = data_long_v1,
+  outcome = "outcome",
+  predictors = c(
+    "factor(female)", "factor(educ)", "hei2010",
+    "factor(pag2008)", "factor(depr1)", "age",
+    "factor(alcuse)", "bmi", "factor(smoker)"
+  ),
+  parallel_vars = c(
+    "hei2010", "factor(pag2008)", "bmi", "factor(smoker)"
+  )
+)
+
+# Summarize the estimated coefficients and standard errors from the fitted model
+summary(model_partial_v1)
+```
+
+```{r}
+#AIC, BIC calculation for the above model
+AIC(model_partial_v1)
+BIC(model_partial_v1)
+```
+
+```{r}
+# Example: Estimate a partial proportional odds model for Visit 2
+# The model includes both time-invariant and time-varying covariates.
+# Proportionality is relaxed for sex, hei2010, pag2008, age, depression and smoking status.
+
+model_partial_v2 <- fit_partial_po_model(
+  data = data_long_v2,
+  outcome = "outcome",
+  predictors = c(
+    "factor(female)", "factor(educ)", "hei2010",
+    "factor(pag2008)", "factor(depr1)", "age",
+    "factor(alcuse)", "bmi", "factor(smoker)"
+  ),
+  parallel_vars = c(
+    "factor(female)", "hei2010",
+    "factor(pag2008)", "factor(depr1)", "factor(smoker)"
+  )
+)
+
+summary(model_partial_v2)
+```
+
+```{r}
+#AIC, BIC calculation for the above model
+AIC(model_partial_v2)
+BIC(model_partial_v2)
+```
+
+```{r}
+# Example: Estimate a partial proportional odds model for Visit 3
+# The model includes both time-invariant and time-varying covariates.
+# Proportionality is relaxed for education, hei2010, age, depression and alcohol use.
+
+model_partial_v3 <- fit_partial_po_model(
+  data = data_long_v3,
+  outcome = "outcome",
+  predictors = c(
+    "factor(female)", "factor(educ)", "hei2010",
+    "factor(pag2008)", "factor(depr1)", "age",
+    "factor(alcuse)", "bmi", "factor(smoker)"
+  ),
+  parallel_vars = c(
+    "factor(educ)", "hei2010", "factor(depr1)", "age",
+    "factor(alcuse)"
+  )
+)
+
+summary(model_partial_v3)
+```
+
+```{r}
+#AIC, BIC calculation for the above model
+AIC(model_partial_v3)
+BIC(model_partial_v3)
+```
+
+
+
+
+```{r}
+#' Analyze Pearson Residuals for Ordinal Regression Models
+#'
+#' This function computes Pearson residuals from an ordinal regression model,
+#' identifies observations with large residuals exceeding a specified threshold,
+#' and returns diagnostic summaries for model fit assessment.
+#'
+#' @param model A fitted ordinal regression model object (e.g., from `vglm`).
+#' @param data A data frame containing the variables used to fit the model.
+#' @param threshold Numeric scalar specifying the residual threshold to flag observations;
+#'                  defaults to 4.
+#'
+#' @return A list containing the following components:
+#' \item{data_with_resid}{Original data frame augmented with maximum Pearson residuals
+#'                       and a logical flag indicating large residuals.}
+#' \item{flagged_data}{Subset of data with residuals exceeding the threshold.}
+#' \item{residual_matrix}{Matrix of Pearson residuals (observations by response categories).}
+#' \item{high_residuals_long}{Data frame in long format showing residuals above threshold
+#'                           by observation and response category.}
+#' \item{top_residuals}{Data frame of residuals ranked by absolute magnitude, descending.}
+#'
+#' @examples
+#' \dontrun{
+#' result <- analyze_ordinal_residuals(model = fitted_model, data = dataset, threshold = 4)
+#' head(result$top_residuals)
+#' }
+#' 
+#' @export
+analyze_ordinal_residuals <- function(model, data, threshold = 4) {
+  # Extract Pearson residuals matrix (n x K-1)
+  resid_mat <- residuals(model, type = "pearson")
+  
+  # Calculate max absolute residual per observation
+  resid_max <- apply(abs(resid_mat), 1, max)
+  
+  # Attach max residual and flag to data
+  data$resid_pearson_max <- resid_max
+  data$flag_high_resid <- resid_max > threshold
+  
+  # Flatten residual matrix for threshold exceedances
+  resid_flat <- as.vector(resid_mat)
+  abs_flat <- abs(resid_flat)
+  n_obs <- nrow(resid_mat)
+  
+  high_idx <- which(abs_flat > threshold)
+  
+  # Create a data frame summarizing observations and residuals exceeding threshold
+  high_resid_df <- data.frame(
+    obs = ((high_idx - 1) %% n_obs) + 1,
+    threshold = ((high_idx - 1) %/% n_obs) + 1,
+    resid = resid_flat[high_idx]
+  )
+  
+  # Print count of flagged observations
+  cat("Number of observations with residual >", threshold, ":", sum(data$flag_high_resid), "\n")
+  
+  flagged_data <- subset(data, flag_high_resid)
+  top_resid <- high_resid_df[order(-abs(high_resid_df$resid)), ]
+  
+  return(list(
+    data_with_resid = data,
+    flagged_data = flagged_data,
+    residual_matrix = resid_mat,
+    high_residuals_long = high_resid_df,
+    top_residuals = top_resid
+  ))
+}
+```
+
+```{r}
+# Apply the residual analysis function to a fitted ordinal regression model and data of visit 1.
+result_v1 <- analyze_ordinal_residuals(
+  model = model_partial_v1,
+  data = data_long_v1,
+  threshold = 4
+)
+
+# Display the observations with the largest absolute residuals for model diagnostics.
+print(result_v1$top_residuals)
+
+```
+
+```{r}
+# Apply the residual analysis function to a fitted ordinal regression model and data of visit 2.
+result_v2 <- analyze_ordinal_residuals(
+  model = model_partial_v2,
+  data = data_long_v2,
+  threshold = 4
+)
+
+
+# Display the observations with the largest absolute residuals for model diagnostics.
+result_v2$top_residuals
+```
+```{r}
+# Apply the residual analysis function to a fitted ordinal regression model and data of visit 3.
+result_v3 <- analyze_ordinal_residuals(
+  model = model_partial_v3,
+  data = data_long_v3,
+  threshold = 4
+)
+
+
+# Display the observations with the largest absolute residuals for model diagnostics.
+result_v3$top_residuals
+```
+
+
+
+```{r}
+#' Diagnostic Plots for Partial Proportional Odds Ordinal Regression Model Residuals
+#'
+#' Generates diagnostic plots to assess model fit and residual behavior for
+#' an ordinal regression model fitted under the partial proportional odds assumption.
+#' Specifically, it computes the maximum absolute Pearson residual per observation
+#' and visualizes these residuals against fitted values, as a Q-Q plot, and by observation index.
+#'
+#' @param model A fitted ordinal regression model object that supports
+#'              Pearson residual extraction and predicted probabilities.
+#' @param data A data frame containing the observations used to fit the model.
+#' @param threshold Numeric scalar specifying the cutoff for flagging large residuals;
+#'                  default is 4.
+#' @param visit_label A character string used as a label in plot titles to indicate
+#'                    the visit or time point, defaulting to "Visit 1".
+#'
+#' @return A named list containing three ggplot2 objects:
+#' \item{residual_vs_fitted}{Scatter plot of max absolute Pearson residuals vs. fitted expected outcome.}
+#' \item{qq_plot}{Normal Q-Q plot comparing max residuals to theoretical normal quantiles.}
+#' \item{residual_vs_index}{Scatter plot of max residuals by observation index.}
+#'
+#' @details
+#' The function first extracts Pearson residuals from the model, then computes the maximum absolute residual
+#' per observation across ordinal response categories. The fitted expected outcome is computed as the
+#' weighted sum of predicted category probabilities and their numeric levels. The three plots aid in
+#' identifying potential outliers, deviations from normality, and patterns over the index of observations.
+#' Horizontal dashed lines indicate the residual threshold for flagging unusually large residuals.
+#'
+#' @examples
+#' \dontrun{
+#' diagnostic_plots <- diagnostic_plots_partial_po(model = fitted_model, data = analysis_data, threshold = 4, visit_label = "Visit 2")
+#' plot(diagnostic_plots$residual_vs_fitted)
+#' plot(diagnostic_plots$qq_plot)
+#' plot(diagnostic_plots$residual_vs_index)
+#' }
+#'
+#' @import ggplot2
+#' @import dplyr
+#' @export
+diagnostic_plots_partial_po <- function(model, data, threshold = 4, visit_label = "Visit 1") {
+  library(ggplot2)
+  library(dplyr)
+  
+  # 1. Extract Pearson residuals (n x (K-1) matrix)
+  resid_mat <- residuals(model, type = "pearson")
+  
+  # 2. Compute max residual per observation
+  resid_max <- apply(abs(resid_mat), 1, max)
+  
+  # 3. Predicted category probabilities and fitted score
+  pred_probs <- predict(model, type = "response")  # matrix: n x K
+  fitted_score <- as.vector(pred_probs %*% seq_len(ncol(pred_probs)))  # expected ordinal score
+
+  # Plot 1: Residuals vs. Fitted Values
+  resid_plot_df <- data.frame(
+    fitted = fitted_score,
+    resid = resid_max
+  )
+
+  p1 <- ggplot(resid_plot_df, aes(x = fitted, y = resid)) +
+    geom_point(alpha = 0.5, size = 1.2) +
+    geom_hline(yintercept = c(-threshold, threshold), linetype = "dashed", color = "red", linewidth = 0.8) +
+    labs(
+      title = paste0("Residuals vs. Fitted Values (", visit_label, ")"),
+      x = "Fitted Expected Outcome",
+      y = "Max Absolute Pearson Residual"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      axis.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(color = "grey90"),
+      axis.line = element_line(color = "black"),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+
+  # Plot 2: Q-Q Plot
+  qq_data <- data.frame(sample = resid_max) %>%
+    mutate(
+      theoretical = qnorm(ppoints(length(sample))),
+      sample_sorted = sort(sample)
+    )
+
+  p2 <- ggplot(qq_data, aes(x = theoretical, y = sample_sorted)) +
+    geom_point(size = 1.2, alpha = 0.7) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red", linewidth = 0.8) +
+    labs(
+      title = paste0("Normal Q-Q Plot of Max Residuals (", visit_label, ")"),
+      x = "Theoretical Quantiles",
+      y = "Sample Quantiles (Max Residuals)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      axis.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank()
+    )
+
+  # Plot 3: Residuals vs. Index
+  resid_df <- data.frame(
+    index = seq_along(resid_max),
+    resid = resid_max
+  )
+
+  p3 <- ggplot(resid_df, aes(x = index, y = resid)) +
+    geom_point(alpha = 0.6, size = 1.2) +
+    geom_hline(yintercept = c(-threshold, threshold), linetype = "dashed", color = "red", linewidth = 0.8) +
+    labs(
+      title = paste0("Observation Index vs. Max Pearson Residual (", visit_label, ")"),
+      x = "Observation Index",
+      y = "Max Absolute Pearson Residual"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      axis.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+
+  # Return all three plots
+  return(list(
+    residual_vs_fitted = p1,
+    qq_plot = p2,
+    residual_vs_index = p3
+  ))
+}
+```
+
+```{r}
+# Apply to your model and data
+diagnostics_v1 <- diagnostic_plots_partial_po(
+  model = model_partial_v1,
+  data = data_long_v1,
+  threshold = 4,
+  visit_label = "Visit 1"
+)
+
+# Display plots
+diagnostics_v1$residual_vs_fitted
+diagnostics_v1$qq_plot
+diagnostics_v1$residual_vs_index
+
+```
+
+```{r}
+# Apply to your model and data
+diagnostics_v2 <- diagnostic_plots_partial_po(
+  model = model_partial_v2,
+  data = data_long_v2,
+  threshold = 4,
+  visit_label = "Visit 2"
+)
+
+# Display plots
+diagnostics_v2$residual_vs_fitted
+diagnostics_v2$qq_plot
+diagnostics_v2$residual_vs_index
+```
+
+```{r}
+# Apply to your model and data
+diagnostics_v3 <- diagnostic_plots_partial_po(
+  model = model_partial_v3,
+  data = data_long_v3,
+  threshold = 4,
+  visit_label = "Visit 3"
+)
+
+# Display plots
+diagnostics_v3$residual_vs_fitted
+diagnostics_v3$qq_plot
+diagnostics_v3$residual_vs_index
+```
+

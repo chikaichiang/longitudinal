@@ -1,0 +1,18 @@
+---
+title: "Repeated Measure Correlation for Continuous Variables"
+author: "Qikai Jiang"
+date: "2023-11-16"
+output: html_document
+---
+
+```{r}
+# Load the longitudinal dataset from a CSV file
+# The dataset contains repeated measures (visits) per subject
+data_long <- read.csv("C:/Users/12073/OneDrive/Desktop/data_cvd.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+library(rmcorr)
+rmcorr(participant = id, measure1 = hei2010, measure2 = bmi, data_long)
+```
+
